@@ -23,6 +23,8 @@ import logging
 from datetime import datetime, timedelta
 
 def __prep_accounts__(accounts):
+    if isinstance(accounts, (list,tuple)):
+        return accounts
     if accounts == 'all':
         accounts = Account.query.filter(Account.third_party==False).filter(Account.active==True).all()
         accounts = [account.name for account in accounts]
@@ -79,17 +81,17 @@ def _find_changes(accounts, monitor, debug=True):
     db.session.close()
 
 
-def _audit_changes(accounts, monitor, send_report, debug=True):
+def _audit_changes(accounts, auditors, send_report, debug=True):
     """ Runs an auditors on all items and, if enabled, syncs Jira """
     accounts = __prep_accounts__(accounts)
-    au = monitor.auditor_class(accounts=accounts, debug=True)
-    au.audit_all_objects()
 
-    if send_report:
-        report = au.create_report()
-        au.email_report(report)
+    for au in auditors:
+        au.audit_all_objects()
+        if send_report:
+            report = au.create_report()
+            au.email_report(report)
+        au.save_issues()
 
-    au.save_issues()
     db.session.close()
 
     if jirasync:
