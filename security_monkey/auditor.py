@@ -186,7 +186,7 @@ class Auditor(object):
             app.logger.info("No Audit issues.  Not sending audit email.")
             return
 
-        subject = "Security Monkey {} Auditor Report".format(self.i_am_singular)
+        subject = "Security Monkey {} Auditor Report for {} account".format(self.i_am_singular, self.accounts[0])
         send_email(subject=subject, recipients=self.emails, html=report)
 
     def create_report(self):
