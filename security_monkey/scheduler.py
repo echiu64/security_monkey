@@ -17,6 +17,7 @@ from security_monkey.reporter import Reporter
 
 from security_monkey import app, db, handler, jirasync
 
+import resource
 import traceback
 import logging
 from datetime import datetime, timedelta
@@ -43,12 +44,14 @@ def run_change_reporter(accounts, interval=None):
     accounts = __prep_accounts__(accounts)
     reporter = Reporter(accounts=accounts, alert_accounts=accounts, debug=True)
     for account in accounts:
+        app.logger.info('Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
         reporter.run(account, interval)
 
 
 def find_changes(accounts, monitor_names, debug=True):
     monitor_names = __prep_monitor_names__(monitor_names)
     for monitor_name in monitor_names:
+        app.logger.info('Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
         monitor = get_monitor(monitor_name)
         _find_changes(accounts, monitor, debug)
 
@@ -62,6 +65,7 @@ def audit_changes(accounts, monitor_names, send_report, debug=True):
         if monitor.has_auditor():
             auditors.append(monitor.auditor_class(accounts=accounts, debug=True))
     if auditors:
+        app.logger.info('Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
         _audit_changes(accounts, auditors, send_report, debug)
 
 
@@ -74,11 +78,13 @@ def _find_changes(accounts, monitor, debug=True):
 
     # Audit these changed items
     if monitor.has_auditor():
+        app.logger.info('Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
         items_to_audit = [item for item in cw.created_items + cw.changed_items]
 
         au = monitor.auditor_class(accounts=accounts, debug=True)
         au.audit_these_objects(items_to_audit)
         au.save_issues()
+        app.logger.info('Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
 
     cw.save()
     db.session.close()
@@ -86,6 +92,7 @@ def _find_changes(accounts, monitor, debug=True):
 
 def _audit_changes(accounts, auditors, send_report, debug=True):
     """ Runs auditors on all items """
+    app.logger.info('Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
     for au in auditors:
         au.audit_all_objects()
         if send_report:
@@ -96,6 +103,7 @@ def _audit_changes(accounts, auditors, send_report, debug=True):
         if jirasync:
             app.logger.info('Syncing {} issues on {} with Jira'.format(au.index, accounts))
             jirasync.sync_issues(accounts, au.index)
+    app.logger.info('Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
 
 
 pool = ThreadPool(
@@ -120,8 +128,11 @@ def setup_scheduler():
     try:
         accounts = Account.query.filter(Account.third_party==False).filter(Account.active==True).all()
         accounts = [account.name for account in accounts]
+        app.logger.info('Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+
         for account in accounts:
             print "Scheduler adding account {}".format(account)
+            app.logger.info('Memory usage: %s (kb)' % resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
             rep = Reporter(accounts=[account])
             for period in rep.get_intervals(account):
                 scheduler.add_interval_job(
