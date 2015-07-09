@@ -22,6 +22,9 @@
 """
 
 import datastore
+import importlib, imp
+import sys, os
+import traceback
 
 from security_monkey import app, db
 from security_monkey.watcher import ChangeItem
@@ -106,12 +109,54 @@ class Auditor(object):
                 method(item)
         self.items = items
 
+        # find pluggable modules
+        app.logger.debug("Find pluggable modules")
+        base_path = os.path.dirname(importlib.import_module("security_monkey.pluggable").__file__)
+        app.logger.debug(" - pluggable path: {}".format(base_path))
+
+        monitor_path = base_path + os.sep + self.index
+        try:
+            app.logger.debug(" - look in {}".format(monitor_path))
+            files = [f for f in os.listdir(monitor_path) if f.endswith(".py") and f.find("__") != 0]
+            app.logger.debug("   - files {}".format(files))
+            all_auditors = []
+            for file in files:
+                mod = imp.load_source("security_monkey.pluggable." + self.index, monitor_path + os.sep + file)
+                pluggable_auditors = [getattr(mod, x) for x in dir(mod) if x.find("Auditor") > 0]
+                all_auditors += pluggable_auditors
+                app.logger.debug(" - pluggable_auditors {}".format(pluggable_auditors))
+                for auditor in pluggable_auditors:
+                    try:
+                        app.logger.debug(" = auditor: {}".format(auditor))
+                        class_ = auditor(self.accounts, self.debug)
+                        plug_methods = [getattr(class_, method) for method in dir(class_) if method.find("check_") == 0]
+                        app.logger.debug("plug_methods: {}".format(plug_methods))
+                        for item in items:
+                            for method in plug_methods:
+                                method(item)
+                    except:
+                        app.logger.info("error running {} message: {}".format(auditor.__name__, sys.exc_info()[0]))
+
+            # Post hooks
+            for auditor in all_auditors:
+                app.logger.debug(" = post auditor: {}".format(auditor))
+                class_ = auditor(self.accounts, self.debug)
+                post_methods = [getattr(class_, method) for method in dir(class_) if method.find("post_") == 0]
+                app.logger.debug("post_methods: {}".format(post_methods))
+                for method in post_methods:
+                    method(items)
+        except:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            app.logger.info("error: {} :: {}\n{}".format(exc_type, exc_value, repr(traceback.extract_tb(exc_traceback))))
+            pass
+
     def audit_all_objects(self):
         """
         Read all items from the database and inspect them all.
         """
         self.items = self.read_previous_items()
         self.audit_these_objects(self.items)
+
 
     def read_previous_items(self):
         """
