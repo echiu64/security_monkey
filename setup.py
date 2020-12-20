@@ -60,7 +60,7 @@ setup(
             'M2Crypto==0.22.3',
             'boto3==0.0.11',
             'dpath==1.3.2',
-            'pyyaml==3.11',
+            'pyyaml==5.1',
             'jira==0.32'
     ]
 )
